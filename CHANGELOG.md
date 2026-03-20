@@ -1,3 +1,8 @@
+# 1.0.1 - 20 Mar 2026
+
+- Updated client.lua to use JPG as the default format to support legacy systems.
+- Fixed an error in client.lua.
+
 # 1.0.0 - 20 Mar 2026
 
 - Removed all TypeScript source files (`src/client/client.ts`, `src/server/server.ts`) and legacy typing files.

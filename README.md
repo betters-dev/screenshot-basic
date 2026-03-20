@@ -65,7 +65,7 @@ sequenceDiagram
 Arguments:
 
 - **options**: An optional object containing options.
-  - **encoding**: 'png' | 'jpg' | 'webp' - The target image encoding. Defaults to 'webp'.
+  - **encoding**: 'png' | 'jpg' | 'webp' - The target image encoding. Defaults to 'jpg'.
   - **quality**: number - The quality for a lossy image encoder, in a range for 0.0-1.0. Defaults to 0.92.
 - **cb**: A callback upon result.
   - **result**: A `base64` data URI for the image.
@@ -106,7 +106,7 @@ Arguments:
 - **url**: The URL to a file upload handler.
 - **field**: The name for the form field to add the file to.
 - **options**: An optional object containing options.
-  - **encoding**: 'png' | 'jpg' | 'webp' - The target image encoding. Defaults to 'webp'.
+  - **encoding**: 'png' | 'jpg' | 'webp' - The target image encoding. Defaults to 'jpg'.
   - **quality**: number - The quality for a lossy image encoder, in a range for 0.0-1.0. Defaults to 0.92.
 - **cb**: A callback upon result.
   - **result**: The response data for the remote URL.

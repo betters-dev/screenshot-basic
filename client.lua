@@ -4,7 +4,7 @@ do
     local DEFAULT_NUI_CALLBACK_URL = 'http://screenshot-basic/screenshot_created'
 
     local DEFAULT_OPTIONS = {
-        encoding = 'webp',
+        encoding = 'jpg',
         quality = 0.92,
         headers = {}
     }
@@ -19,7 +19,7 @@ do
         return id
     end
 
-    local function screenshotCreated(body, cb)
+    RegisterNuiCallback('screenshot_created', function(body, cb)
         cb(true)
         local id = tostring(body.id)
 
@@ -27,11 +27,16 @@ do
             results[id](body.data)
             results[id] = nil
         end
-    end
+    end)
 
-    local function requestScreenshot(options, cb)
+    exports('requestScreenshot', function(options, cb)
         local realOptions = (type(options) == 'table') and options or {}
         local realCb = (type(options) == 'function') and options or cb
+
+        if type(realOptions) == 'table' and not pcall(function() return realOptions.dummy end) then
+            realCb = realOptions
+            realOptions = {}
+        end
 
         for k, v in pairs(DEFAULT_OPTIONS) do
             if realOptions[k] == nil then
@@ -48,11 +53,16 @@ do
         SendNUIMessage({
             request = realOptions
         })
-    end
+    end)
 
-    local function requestScreenshotUpload(url, field, options, cb)
+    exports('requestScreenshotUpload', function(url, field, options, cb)
         local realOptions = (type(options) == 'table') and options or {}
         local realCb = (type(options) == 'function') and options or cb
+
+        if type(realOptions) == 'table' and not pcall(function() return realOptions.dummy end) then
+            realCb = realOptions
+            realOptions = {}
+        end
 
         for k, v in pairs(DEFAULT_OPTIONS) do
             if realOptions[k] == nil then
@@ -69,9 +79,5 @@ do
         SendNUIMessage({
             request = realOptions
         })
-    end
-
-    RegisterNuiCallback('screenshot_created', screenshotCreated)
-    exports('requestScreenshot', requestScreenshot)
-    exports('requestScreenshotUpload', requestScreenshotUpload)
+    end)
 end
