@@ -34,13 +34,13 @@ jobs:
         run: |
           mkdir -p screenshot-basic
           cp -r ui.html client.lua fxmanifest.lua LICENSE screenshot-basic/
-          zip -r screenshot-basic.zip screenshot-basic
+          zip -r screenshot-basic-${{ github.event.inputs.tag_name }}.zip screenshot-basic
 
       - name: Create Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create ${{ github.event.inputs.tag_name }} \
-            screenshot-basic.zip \
+            screenshot-basic-${{ github.event.inputs.tag_name }}.zip \
             --title "v${{ github.event.inputs.tag_name }}" \
             --generate-notes
