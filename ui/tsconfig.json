@@ -1,18 +1,13 @@
 {
-    "compilerOptions": {
-        "outDir": "./",
-        "noImplicitAny": false,
-        "module": "es6",
-        "moduleResolution": "node",
-        "target": "es6",
-        "allowJs": true,
-        "lib": [
-            "es2016",
-            "dom"
-        ]
-    },
-    "include": [
-        "./**/*"
-    ],
-    "exclude": []
+  "compilerOptions": {
+    "outDir": "./",
+    "noImplicitAny": false,
+    "module": "es6",
+    "moduleResolution": "node",
+    "target": "es6",
+    "allowJs": true,
+    "lib": ["es2016", "dom"]
+  },
+  "include": ["./**/*"],
+  "exclude": []
 }

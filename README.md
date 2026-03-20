@@ -23,14 +23,16 @@ and wraps these calls using Three.js to 'simplify' WebGL initialization and copy
 ### Client
 
 #### requestScreenshot(options?: any, cb: (result: string) => void)
+
 Takes a screenshot and passes the data URI to a callback. Please don't send this through _any_ server events.
 
 Arguments:
-* **options**: An optional object containing options.
-  * **encoding**: 'png' | 'jpg' | 'webp' - The target image encoding. Defaults to 'jpg'.
-  * **quality**: number - The quality for a lossy image encoder, in a range for 0.0-1.0. Defaults to 0.92.
-* **cb**: A callback upon result.
-  * **result**: A `base64` data URI for the image.
+
+- **options**: An optional object containing options.
+  - **encoding**: 'png' | 'jpg' | 'webp' - The target image encoding. Defaults to 'jpg'.
+  - **quality**: number - The quality for a lossy image encoder, in a range for 0.0-1.0. Defaults to 0.92.
+- **cb**: A callback upon result.
+  - **result**: A `base64` data URI for the image.
 
 Example:
 
@@ -41,16 +43,18 @@ end)
 ```
 
 #### requestScreenshotUpload(url: string, field: string, options?: any, cb: (result: string) => void)
+
 Takes a screenshot and uploads it as a file (`multipart/form-data`) to a remote HTTP URL.
 
 Arguments:
-* **url**: The URL to a file upload handler.
-* **field**: The name for the form field to add the file to.
-* **options**: An optional object containing options.
-  * **encoding**: 'png' | 'jpg' | 'webp' - The target image encoding. Defaults to 'jpg'.
-  * **quality**: number - The quality for a lossy image encoder, in a range for 0.0-1.0. Defaults to 0.92.
-* **cb**: A callback upon result.
-  * **result**: The response data for the remote URL.
+
+- **url**: The URL to a file upload handler.
+- **field**: The name for the form field to add the file to.
+- **options**: An optional object containing options.
+  - **encoding**: 'png' | 'jpg' | 'webp' - The target image encoding. Defaults to 'jpg'.
+  - **quality**: number - The quality for a lossy image encoder, in a range for 0.0-1.0. Defaults to 0.92.
+- **cb**: A callback upon result.
+  - **result**: The response data for the remote URL.
 
 Example:
 
@@ -62,25 +66,28 @@ end)
 ```
 
 ### Server
+
 The server can also request a client to take a screenshot and upload it to a built-in HTTP handler on the server.
 
 Using this API on the server requires at least FiveM client version 1129160, and server pipeline 1011 or higher.
 
 #### requestClientScreenshot(player: string | number, options: any, cb: (err: string | boolean, data: string) => void)
+
 Requests the specified client to take a screenshot.
 
 Arguments:
-* **player**: The target player's player index.
-* **options**: An object containing options.
-  * **fileName**: string? - The file name on the server to save the image to. If not passed, the callback will get a data URI for the image data.
-  * **encoding**: 'png' | 'jpg' | 'webp' - The target image encoding. Defaults to 'jpg'.
-  * **quality**: number - The quality for a lossy image encoder, in a range for 0.0-1.0. Defaults to 0.92.
-* **cb**: A callback upon result.
-  * **err**: `false`, or an error string.
-  * **data**: The local file name the upload was saved to, or the data URI for the image.
 
+- **player**: The target player's player index.
+- **options**: An object containing options.
+  - **fileName**: string? - The file name on the server to save the image to. If not passed, the callback will get a data URI for the image data.
+  - **encoding**: 'png' | 'jpg' | 'webp' - The target image encoding. Defaults to 'jpg'.
+  - **quality**: number - The quality for a lossy image encoder, in a range for 0.0-1.0. Defaults to 0.92.
+- **cb**: A callback upon result.
+  - **err**: `false`, or an error string.
+  - **data**: The local file name the upload was saved to, or the data URI for the image.
 
 Example:
+
 ```lua
 exports['screenshot-basic']:requestClientScreenshot(GetPlayers()[1], {
     fileName = 'cache/screenshot.jpg'
