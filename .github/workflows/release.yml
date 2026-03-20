@@ -1,0 +1,46 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Tag name for the release (e.g., 1.0.0)"
+        required: true
+        default: "1.0.0"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --production
+
+      - name: Build project
+        run: bun run build
+
+      - name: Update version in fxmanifest.lua
+        run: |
+          sed -i 's/{VERSION}/${{ github.event.inputs.tag_name }}/g' fxmanifest.lua
+
+      - name: Package for release
+        run: |
+          mkdir -p screenshot-basic
+          cp -r ui.html client.lua fxmanifest.lua LICENSE screenshot-basic/
+          zip -r screenshot-basic.zip screenshot-basic
+
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create ${{ github.event.inputs.tag_name }} \
+            screenshot-basic.zip \
+            --title "v${{ github.event.inputs.tag_name }}" \
+            --generate-notes
