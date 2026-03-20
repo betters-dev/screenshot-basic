@@ -8,70 +8,120 @@ import {
   UnsignedByteType,
   CfxTexture,
   ShaderMaterial,
-  PlaneBufferGeometry,
+  PlaneGeometry,
   Mesh,
   WebGLRenderer,
 } from "@citizenfx/three";
 
-class ScreenshotRequest {
-  encoding: "jpg" | "png" | "webp";
-  quality: number;
+interface ScreenshotRequest {
+  encoding: "webp" | "jpg" | "png";
+  quality?: number;
   headers: any;
-
   correlation: string;
-
   resultURL: string;
-
   targetURL: string;
   targetField: string;
 }
 
-// from https://stackoverflow.com/a/12300351
-function dataURItoBlob(dataURI: string) {
-  const byteString = atob(dataURI.split(",")[1]);
-  const mimeString = dataURI.split(",")[0].split(":")[1].split(";")[0];
+const workerCode = `
+    let canvas = new OffscreenCanvas(1, 1);
+    let ctx = canvas.getContext('2d');
 
-  const ab = new ArrayBuffer(byteString.length);
-  const ia = new Uint8Array(ab);
+    self.onmessage = async (e) => {
+        const { buffer, width, height, quality, encoding, taskId, needsBase64 } = e.data;
 
-  for (let i = 0; i < byteString.length; i++) {
-    ia[i] = byteString.charCodeAt(i);
-  }
+        if (canvas.width !== width || canvas.height !== height) {
+            canvas.width = width;
+            canvas.height = height;
+        }
 
-  const blob = new Blob([ab], { type: mimeString });
-  return blob;
-}
+        const imageData = new ImageData(new Uint8ClampedArray(buffer), width, height);
+        ctx.putImageData(imageData, 0, 0);
+
+        let type = 'image/webp';
+        if (encoding === 'jpg') type = 'image/jpeg';
+        else if (encoding === 'png') type = 'image/png';
+
+        const blob = await canvas.convertToBlob({ type, quality });
+
+        if (needsBase64) {
+            const reader = new FileReaderSync();
+            const dataUrl = reader.readAsDataURL(blob);
+
+            self.postMessage({ taskId, dataUrl, recycledBuffer: buffer }, [buffer]);
+        } else {
+            self.postMessage({ taskId, blob, recycledBuffer: buffer }, [buffer]);
+        }
+    };
+`;
+
+const workerBlob = new Blob([workerCode], { type: "application/javascript" });
+const workerUrl = URL.createObjectURL(workerBlob);
+const worker = new Worker(workerUrl);
 
 class ScreenshotUI {
-  renderer: any;
-  rtTexture: any;
-  sceneRTT: any;
-  cameraRTT: any;
-  material: any;
-  request: ScreenshotRequest;
+  renderer: WebGLRenderer;
+  rtTexture: WebGLRenderTarget;
+  sceneRTT: Scene;
+  cameraRTT: OrthographicCamera;
+  material: ShaderMaterial;
+  quad: Mesh;
+
+  requests: ScreenshotRequest[] = [];
+  isAnimating: boolean = false;
+
+  recycledBuffer: ArrayBuffer | null = null;
+
+  pendingTasks = new Map<string, Function>();
 
   initialize() {
+    this.animate = this.animate.bind(this);
+
     window.addEventListener("message", (event) => {
-      this.request = event.data.request;
+      if (event.data?.request) {
+        this.requests.push(event.data.request);
+
+        if (!this.isAnimating) {
+          this.isAnimating = true;
+          requestAnimationFrame(this.animate);
+        }
+      }
     });
 
-    window.addEventListener("resize", (event) => {
+    worker.addEventListener("message", (e) => {
+      const { taskId, blob, dataUrl, recycledBuffer } = e.data;
+
+      if (recycledBuffer) {
+        this.recycledBuffer = recycledBuffer;
+      }
+
+      if (this.pendingTasks.has(taskId)) {
+        const resolve = this.pendingTasks.get(taskId);
+        resolve({ blob, dataUrl });
+        this.pendingTasks.delete(taskId);
+      }
+    });
+
+    window.addEventListener("resize", () => {
       this.resize();
     });
 
-    const cameraRTT: any = new OrthographicCamera(
-      window.innerWidth / -2,
-      window.innerWidth / 2,
-      window.innerHeight / 2,
-      window.innerHeight / -2,
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    this.cameraRTT = new OrthographicCamera(
+      width / -2,
+      width / 2,
+      height / 2,
+      height / -2,
       -10000,
       10000,
     );
-    cameraRTT.position.z = 100;
+    this.cameraRTT.position.z = 100;
 
-    const sceneRTT: any = new Scene();
+    this.sceneRTT = new Scene();
 
-    const rtTexture = new WebGLRenderTarget(window.innerWidth, window.innerHeight, {
+    this.rtTexture = new WebGLRenderTarget(window.innerWidth, window.innerHeight, {
       minFilter: LinearFilter,
       magFilter: NearestFilter,
       format: RGBAFormat,
@@ -80,179 +130,147 @@ class ScreenshotUI {
     const gameTexture: any = new CfxTexture();
     gameTexture.needsUpdate = true;
 
-    const material = new ShaderMaterial({
+    this.material = new ShaderMaterial({
       uniforms: { tDiffuse: { value: gameTexture } },
       vertexShader: `
 			varying vec2 vUv;
-
 			void main() {
 				vUv = vec2(uv.x, 1.0-uv.y); // fuck gl uv coords
 				gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
-			}
-`,
+			}`,
       fragmentShader: `
 			varying vec2 vUv;
 			uniform sampler2D tDiffuse;
-
 			void main() {
 				gl_FragColor = texture2D( tDiffuse, vUv );
-			}
-`,
+			}`,
     });
 
-    this.material = material;
+    const plane = new PlaneGeometry(1, 1);
+    this.quad = new Mesh(plane, this.material);
+    this.quad.scale.set(width, height, 1);
+    this.quad.position.z = -100;
+    this.sceneRTT.add(this.quad);
 
-    const plane = new PlaneBufferGeometry(window.innerWidth, window.innerHeight);
-    const quad: any = new Mesh(plane, material);
-    quad.position.z = -100;
-    sceneRTT.add(quad);
+    this.renderer = new WebGLRenderer();
+    this.renderer.setPixelRatio(window.devicePixelRatio);
+    this.renderer.setSize(width, height);
+    this.renderer.autoClear = false;
 
-    const renderer = new WebGLRenderer();
-    renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.autoClear = false;
-
-    document.getElementById("app").appendChild(renderer.domElement);
-    document.getElementById("app").style.display = "none";
-
-    this.renderer = renderer;
-    this.rtTexture = rtTexture;
-    this.sceneRTT = sceneRTT;
-    this.cameraRTT = cameraRTT;
-
-    this.animate = this.animate.bind(this);
-
-    requestAnimationFrame(this.animate);
+    const appElement = document.getElementById("app");
+    if (appElement) {
+      appElement.appendChild(this.renderer.domElement);
+      appElement.style.display = "none";
+    }
   }
 
   resize() {
-    const cameraRTT: any = new OrthographicCamera(
-      window.innerWidth / -2,
-      window.innerWidth / 2,
-      window.innerHeight / 2,
-      window.innerHeight / -2,
-      -10000,
-      10000,
-    );
-    cameraRTT.position.z = 100;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
 
-    this.cameraRTT = cameraRTT;
+    this.cameraRTT.left = width / -2;
+    this.cameraRTT.right = width / 2;
+    this.cameraRTT.top = height / 2;
+    this.cameraRTT.bottom = height / -2;
+    this.cameraRTT.updateProjectionMatrix();
 
-    const sceneRTT: any = new Scene();
+    this.quad.scale.set(width, height, 1);
 
-    const plane = new PlaneBufferGeometry(window.innerWidth, window.innerHeight);
-    const quad: any = new Mesh(plane, this.material);
-    quad.position.z = -100;
-    sceneRTT.add(quad);
+    this.rtTexture.setSize(width, height);
+    this.renderer.setSize(width, height);
+  }
 
-    this.sceneRTT = sceneRTT;
+  async animate() {
+    if (this.requests.length > 0) {
+      const request = this.requests.shift();
 
-    this.rtTexture = new WebGLRenderTarget(window.innerWidth, window.innerHeight, {
-      minFilter: LinearFilter,
-      magFilter: NearestFilter,
-      format: RGBAFormat,
-      type: UnsignedByteType,
+      if (request) {
+        this.renderer.clear();
+        this.renderer.render(this.sceneRTT, this.cameraRTT, this.rtTexture, true);
+
+        await this.handleRequest(request);
+      }
+
+      requestAnimationFrame(this.animate);
+    } else {
+      this.isAnimating = false;
+    }
+  }
+
+  async handleRequest(request: ScreenshotRequest) {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    const expectedByteLength = width * height * 4;
+
+    if (this.recycledBuffer && this.recycledBuffer.byteLength !== expectedByteLength) {
+      this.recycledBuffer = null;
+    }
+    const buffer = this.recycledBuffer || new ArrayBuffer(expectedByteLength);
+    const read = new Uint8Array(buffer);
+    this.recycledBuffer = null;
+
+    this.renderer.readRenderTargetPixels(this.rtTexture, 0, 0, width, height, read);
+
+    const taskId = crypto.randomUUID();
+    const needsBase64 = !request.targetField;
+
+    const result: { blob?: Blob; dataUrl?: string } = await new Promise((resolve) => {
+      this.pendingTasks.set(taskId, resolve);
+
+      worker.postMessage(
+        {
+          buffer: read.buffer,
+          width,
+          height,
+          quality: request.quality || 0.92,
+          encoding: request.encoding,
+          taskId,
+          needsBase64,
+        },
+        [read.buffer],
+      );
     });
 
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
-  }
-
-  animate() {
-    requestAnimationFrame(this.animate);
-
-    this.renderer.clear();
-    this.renderer.render(this.sceneRTT, this.cameraRTT, this.rtTexture, true);
-
-    if (this.request) {
-      const request = this.request;
-      this.request = null;
-
-      this.handleRequest(request);
-    }
-  }
-
-  handleRequest(request: ScreenshotRequest) {
-    // read the screenshot
-    const read = new Uint8Array(window.innerWidth * window.innerHeight * 4);
-    this.renderer.readRenderTargetPixels(
-      this.rtTexture,
-      0,
-      0,
-      window.innerWidth,
-      window.innerHeight,
-      read,
-    );
-
-    // create a temporary canvas to compress the image
-    const canvas = document.createElement("canvas");
-    canvas.style.display = "inline";
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-
-    // draw the image on the canvas
-    const d = new Uint8ClampedArray(read.buffer);
-
-    const cxt = canvas.getContext("2d");
-    cxt.putImageData(new ImageData(d, window.innerWidth, window.innerHeight), 0, 0);
-
-    // encode the image
-    let type = "image/png";
-
-    switch (request.encoding) {
-      case "jpg":
-        type = "image/jpeg";
-        break;
-      case "png":
-        type = "image/png";
-        break;
-      case "webp":
-        type = "image/webp";
-        break;
-    }
-
-    if (!request.quality) {
-      request.quality = 0.92;
-    }
-
-    // actual encoding
-    const imageURL = canvas.toDataURL(type, request.quality);
-
-    const getFormData = () => {
-      const formData = new FormData();
-      formData.append(
-        request.targetField,
-        dataURItoBlob(imageURL),
-        `screenshot.${request.encoding}`,
-      );
-
-      return formData;
+    const upload = (body: any) => {
+      fetch(request.targetURL, {
+        method: "POST",
+        mode: "cors",
+        headers: request.headers,
+        body,
+      })
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`failed to upload: ${response.status}`);
+          }
+          return response.text();
+        })
+        .then((text) => {
+          if (request.resultURL) {
+            fetch(request.resultURL, {
+              method: "POST",
+              mode: "cors",
+              body: JSON.stringify({
+                data: text,
+                id: request.correlation,
+              }),
+            }).catch((err) => console.error("error during result upload:", err));
+          }
+        })
+        .catch((err) => console.error("error during file upload:", err));
     };
 
-    // upload the image somewhere
-    fetch(request.targetURL, {
-      method: "POST",
-      mode: "cors",
-      headers: request.headers,
-      body: request.targetField
-        ? getFormData()
-        : JSON.stringify({
-            data: imageURL,
-            id: request.correlation,
-          }),
-    })
-      .then((response) => response.text())
-      .then((text) => {
-        if (request.resultURL) {
-          fetch(request.resultURL, {
-            method: "POST",
-            mode: "cors",
-            body: JSON.stringify({
-              data: text,
-              id: request.correlation,
-            }),
-          });
-        }
-      });
+    if (request.targetField && result.blob) {
+      const formData = new FormData();
+      formData.append(request.targetField, result.blob, `screenshot.${request.encoding}`);
+      upload(formData);
+    } else if (result.dataUrl) {
+      upload(
+        JSON.stringify({
+          data: result.dataUrl,
+          id: request.correlation,
+        }),
+      );
+    }
   }
 }
 
