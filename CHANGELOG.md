@@ -1,3 +1,7 @@
+# 1.0.2 - 21 Mar 2026
+
+- **Completely removed Three.js**, rewriting the rendering pipeline in raw WebGL (`main.ts` / `webworker.ts`) to drastically reduce bundle size and execution time.
+
 # 1.0.1 - 20 Mar 2026
 
 - Updated client.lua to use JPG as the default format to support legacy systems.
