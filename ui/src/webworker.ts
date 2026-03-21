@@ -3,6 +3,7 @@ let canvas: OffscreenCanvas | null = null;
 
 let requestQueue: any[] = [];
 let isProcessing = false;
+let isVideoRecording = false;
 
 let recycledBuffer: ArrayBuffer | null = null;
 let offscreenCanvas: OffscreenCanvas | null = null;
@@ -187,5 +188,21 @@ self.onmessage = (e: MessageEvent) => {
   } else if (type === "request") {
     requestQueue.push(payload);
     processQueue();
+  } else if (type === "start_video") {
+    const { taskId } = payload;
+    isVideoRecording = true;
+    const loop = () => {
+      if (!isVideoRecording) return;
+      if (gl && canvas) {
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        gl.finish();
+        const bitmap = canvas.transferToImageBitmap();
+        self.postMessage({ type: "video_frame", taskId, bitmap }, [bitmap]);
+      }
+      requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+  } else if (type === "stop_video") {
+    isVideoRecording = false;
   }
 };

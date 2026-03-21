@@ -80,4 +80,32 @@ do
             request = realOptions
         })
     end)
+
+    exports('requestRecordVideoUpload', function(url, field, options, cb)
+        local realOptions = (type(options) == 'table') and options or {}
+        local realCb = (type(options) == 'function') and options or cb
+
+        if type(realOptions) == 'table' and not pcall(function() return realOptions.dummy end) then
+            realCb = realOptions
+            realOptions = {}
+        end
+
+        for k, v in pairs(DEFAULT_OPTIONS) do
+            if realOptions[k] == nil then
+                realOptions[k] = v
+            end
+        end
+
+        realOptions.targetURL = url
+        realOptions.targetField = field
+        realOptions.resultURL = DEFAULT_NUI_CALLBACK_URL
+        realOptions.recordVideo = true
+        realOptions.duration = realOptions.duration or 5000
+
+        realOptions.correlation = registerCorrelation(realCb)
+
+        SendNUIMessage({
+            request = realOptions
+        })
+    end)
 end

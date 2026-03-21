@@ -1,3 +1,8 @@
+# 1.1.0 - 21 Mar 2026
+
+- Implemented **video recording** functionality (`requestRecordVideoUpload`) using `MediaRecorder` and `ImageBitmap` frame transfers.
+- Added `duration` option for video recording (defaults to 5 seconds).
+
 # 1.0.2 - 21 Mar 2026
 
 - **Completely removed Three.js**, rewriting the rendering pipeline in raw WebGL (`main.ts` / `webworker.ts`) to drastically reduce bundle size and execution time.

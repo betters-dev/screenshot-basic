@@ -10,11 +10,11 @@ Unlike the original resource, this version completely removes heavy dependencies
 
 The screenshot capture process is heavily optimized to ensure minimal impact on game performance:
 
-| Metric               | Before (Three.js) | After (Raw WebGL + Worker) | Reduction / Improvement  |
-| :------------------- | :---------------- | :------------------------- | :----------------------- |
-| **CPU msec Idle**    | 0.03 ms           | 0.00 ms                    | **100%** (Effectively 0) |
-| **Bundle Size**      | 535 KB            | 5 KB                       | **~99.1%** smaller       |
-| **Main Thread Time** | 240.0 ms          | 1.2 ms                     | **~99.5%** faster        |
+| Metric               | Before   | After   | Improvement        |
+| :------------------- | :------- | :------ | :----------------- |
+| **CPU msec Idle**    | ~0.03 ms | 0.00 ms | **100% Reduction** |
+| **ui.html Size**     | ~530 KB  | < 10 KB | **> 98% Smaller**  |
+| **Main Thread Time** | ~240 ms  | ~1 ms   | **~99.5% Faster**  |
 
 ### ✨ Key Architectural Improvements
 
@@ -125,5 +125,51 @@ Example:
 exports['screenshot-basic']:requestScreenshotUpload('https://discord.com/api/webhooks/...', 'files[]', function(responseText)
     local data = json.decode(responseText)
     TriggerEvent('chat:addMessage', { template = '<img src="{0}" style="max-width: 300px;" />', args = { data.attachments[1].url } })
+end)
+```
+
+#### requestRecordVideoUpload(url: string, field: string, options?: any, cb: (result: string) => void)
+
+Takes a short video recording of the game and uploads it to a remote HTTP URL.
+
+```mermaid
+sequenceDiagram
+    participant Lua as Client (Lua)
+    participant NUI as NUI (JS)
+    participant Worker as Web Worker (JS)
+    participant Server as Remote Server
+
+    Lua->>NUI: SendNUIMessage({ request: recordVideo })
+    NUI->>Worker: postMessage({ type: start_video })
+    loop For duration
+        Worker->>Worker: Render Frame
+        Worker-->>NUI: postMessage({ type: video_frame, bitmap })
+        NUI->>NUI: Draw bitmap to RecordCanvas
+    end
+    NUI->>Worker: postMessage({ type: stop_video })
+    NUI->>NUI: mediaRecorder.stop()
+    NUI->>Server: fetch(POST multipart/form-data video.webm)
+    Server-->>NUI: HTTP 200 (Response)
+    NUI->>Lua: Trigger NUI Callback
+    Lua->>Lua: Execute cb(responseText)
+```
+
+Arguments:
+
+- **url**: The URL to a file upload handler.
+- **field**: The name for the form field to add the file to.
+- **options**: An optional object containing options.
+  - **duration**: number - The duration of the recording in milliseconds. Defaults to 5000.
+- **cb**: A callback upon result.
+  - **result**: The response data for the remote URL.
+
+Example:
+
+```lua
+exports['screenshot-basic']:requestRecordVideoUpload('https://discord.com/api/webhooks/...', 'files[]', {
+    duration = 3000
+}, function(responseText)
+    local data = json.decode(responseText)
+    TriggerEvent('chat:addMessage', { template = '<video controls src="{0}" style="max-width: 300px;" />', args = { data.attachments[1].url } })
 end)
 ```
