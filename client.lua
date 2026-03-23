@@ -1,111 +1,75 @@
 do
     local results = {}
     local correlationId = 0
-    local DEFAULT_NUI_CALLBACK_URL = 'http://screenshot-basic/screenshot_created'
+    local DEFAULT_NUI_CALLBACK_URL <const> = 'http://screenshot-basic/screenshot_created'
 
-    local DEFAULT_OPTIONS = {
+    local DEFAULT_OPTIONS <const> = {
         encoding = 'jpg',
         quality = 0.92,
         headers = {}
     }
 
-    local function registerCorrelation(cb)
-        local id = tostring(correlationId)
-
-        results[id] = cb
-
-        correlationId = correlationId + 1
-
-        return id
-    end
-
-    RegisterNuiCallback('screenshot_created', function(body, cb)
-        cb(true)
-        local id = tostring(body.id)
-
-        if id ~= nil and results[id] then
-            results[id](body.data)
-            results[id] = nil
-        end
-    end)
-
-    exports('requestScreenshot', function(options, cb)
+    local function prepareRequest(options, cb)
         local realOptions = (type(options) == 'table') and options or {}
         local realCb = (type(options) == 'function') and options or cb
+        local finalOptions = {
+            encoding = realOptions.encoding or DEFAULT_OPTIONS.encoding,
+            quality  = realOptions.quality or DEFAULT_OPTIONS.quality,
+            headers  = realOptions.headers or DEFAULT_OPTIONS.headers,
+            fields   = realOptions.fields or {},
+        }
 
-        if type(realOptions) == 'table' and not pcall(function() return realOptions.dummy end) then
-            realCb = realOptions
-            realOptions = {}
+        for k, v in pairs(realOptions) do
+            if finalOptions[k] == nil then finalOptions[k] = v end
         end
+        local id = correlationId
+        results[id] = realCb
+        correlationId = id + 1
 
-        for k, v in pairs(DEFAULT_OPTIONS) do
-            if realOptions[k] == nil then
-                realOptions[k] = v
-            end
-        end
+        finalOptions.correlation = id
+        return finalOptions, realCb
+    end
 
-        realOptions.resultURL = nil
-        realOptions.targetField = nil
-        realOptions.targetURL = DEFAULT_NUI_CALLBACK_URL
+    exports('requestScreenshot', function(options, cb)
+        local req = prepareRequest(options, cb)
 
-        realOptions.correlation = registerCorrelation(realCb)
+        req.resultURL = nil
+        req.targetField = nil
+        req.targetURL = DEFAULT_NUI_CALLBACK_URL
 
-        SendNUIMessage({
-            request = realOptions
-        })
+        SendNUIMessage({ request = req })
     end)
 
     exports('requestScreenshotUpload', function(url, field, options, cb)
-        local realOptions = (type(options) == 'table') and options or {}
-        local realCb = (type(options) == 'function') and options or cb
+        local req = prepareRequest(options, cb)
 
-        if type(realOptions) == 'table' and not pcall(function() return realOptions.dummy end) then
-            realCb = realOptions
-            realOptions = {}
-        end
+        req.targetURL = url
+        req.targetField = field
+        req.resultURL = DEFAULT_NUI_CALLBACK_URL
 
-        for k, v in pairs(DEFAULT_OPTIONS) do
-            if realOptions[k] == nil then
-                realOptions[k] = v
-            end
-        end
-
-        realOptions.targetURL = url
-        realOptions.targetField = field
-        realOptions.resultURL = DEFAULT_NUI_CALLBACK_URL
-
-        realOptions.correlation = registerCorrelation(realCb)
-
-        SendNUIMessage({
-            request = realOptions
-        })
+        SendNUIMessage({ request = req })
     end)
 
     exports('requestRecordVideoUpload', function(url, field, options, cb)
-        local realOptions = (type(options) == 'table') and options or {}
-        local realCb = (type(options) == 'function') and options or cb
+        local req = prepareRequest(options, cb)
 
-        if type(realOptions) == 'table' and not pcall(function() return realOptions.dummy end) then
-            realCb = realOptions
-            realOptions = {}
+        req.targetURL = url
+        req.targetField = field
+        req.resultURL = DEFAULT_NUI_CALLBACK_URL
+        req.recordVideo = true
+        req.duration = req.duration or 5000
+
+        SendNUIMessage({ request = req })
+    end)
+
+    RegisterNuiCallback('screenshot_created', function(body, cb)
+        cb(true)
+        local id = body.id
+        local callback = results[id]
+
+        if callback then
+            callback(body.data)
+            results[id] = nil
         end
-
-        for k, v in pairs(DEFAULT_OPTIONS) do
-            if realOptions[k] == nil then
-                realOptions[k] = v
-            end
-        end
-
-        realOptions.targetURL = url
-        realOptions.targetField = field
-        realOptions.resultURL = DEFAULT_NUI_CALLBACK_URL
-        realOptions.recordVideo = true
-        realOptions.duration = realOptions.duration or 5000
-
-        realOptions.correlation = registerCorrelation(realCb)
-
-        SendNUIMessage({
-            request = realOptions
-        })
     end)
 end
