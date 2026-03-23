@@ -1,3 +1,11 @@
+# 1.2.0 - 23 Mar 2026
+
+- Re-implement **video recording** using `WebCodecs` (`VideoEncoder`) and a custom lightweight WebM muxer (`MiniWebMMuxer`) to fully offload video processing from the main thread.
+- Move the entire video encoding and muxing pipeline into the Web Worker, eliminating the need for `MediaRecorder` or `canvas.captureStream()` on the main UI thread.
+- Added `ui/src/webm-muxer.ts` for efficient, low-overhead WebM container generation.
+- Improved build script with a more robust string replacement for the worker blob.
+- Fixed an issue where the main thread was still involved in frame-by-frame video capture.
+
 # 1.1.1 - 22 Mar 2026
 
 - Move image compression and HTTP uploads from main thread to Web Worker.

@@ -13,10 +13,10 @@ The screenshot capture process is heavily optimized to ensure minimal impact on 
 | Metric               | Before   | After   | Reduce    |
 |:---------------------|:---------|:--------|:----------|
 | **CPU msec Idle**    | ~0.03 ms | 0.00 ms | **100%**  |
-| **ui.html Size**     | ~530 KB  | < 10 KB | **98%**   |
-| **Main Thread Time** | ~240 ms  | ~1 ms   | **99.5%** |
+| **Main Thread Time** | ~240 ms  | < 1 ms  | **99.5%** |
+| **ui.html Size**     | ~530 KB  | < 15 KB | **97%**   |
 
-### ✨ Key Features
+### ✨ Features
 
 **🎨 Rendering & Pipeline**
 
@@ -147,14 +147,13 @@ sequenceDiagram
 
     Lua->>NUI: SendNUIMessage({ request: recordVideo })
     NUI->>Worker: postMessage({ type: start_video })
-    loop For duration
-        Worker->>Worker: Render Frame
-        Worker-->>NUI: postMessage({ type: video_frame, bitmap })
-        NUI->>NUI: Draw bitmap to RecordCanvas
+    loop Video Capture (WebCodecs)
+        Worker->>Worker: Render Frame (WebGL)
+        Worker->>Worker: videoEncoder.encode(frame)
     end
     NUI->>Worker: postMessage({ type: stop_video })
-    NUI->>NUI: mediaRecorder.stop()
-    NUI->>Worker: postMessage({ type: upload_video, payload: { videoBlob, request } })
+    Worker->>Worker: videoEncoder.flush()
+    Worker->>Worker: muxer.finalize() (Blob)
     Worker->>Server: fetch(POST multipart/form-data video.webm)
     Server-->>Worker: HTTP 200 (Response)
     Worker-->>NUI: postMessage({ type: video_uploaded })
