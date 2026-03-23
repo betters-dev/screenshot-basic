@@ -1,3 +1,5 @@
+import { WebCodecMuxer } from "./webcodec";
+
 interface WorkerRequest {
   taskId: string;
   encoding: string;
@@ -17,7 +19,17 @@ let tex: WebGLTexture | null = null;
 
 let requestQueue: WorkerRequest[] = [];
 let isProcessing = false;
-let isVideoRecording = false;
+
+interface RecordingSession {
+  taskId: string;
+  videoEncoder: VideoEncoder;
+  muxer: WebCodecMuxer;
+  frameCount: number;
+  recordingStartTime: number;
+  expectedNextFrameTime: number;
+}
+
+const activeRecordings = new Map<string, RecordingSession>();
 
 let recycledBuffer: ArrayBuffer | null = null;
 let offscreenCanvas: OffscreenCanvas | null = null;
@@ -219,6 +231,136 @@ async function handleRequest(req: WorkerRequest) {
   self.postMessage({ taskId: req.taskId, type: "screenshot_done" });
 }
 
+function startRecordingLoop() {
+  const fps = 30;
+  const frameInterval = 1000 / fps;
+
+  const loop = () => {
+    if (activeRecordings.size === 0 || !gl || !canvas) return;
+
+    const now = performance.now();
+    let frameToEncode: VideoFrame | null = null;
+
+    for (const session of activeRecordings.values()) {
+      if (now >= session.expectedNextFrameTime) {
+        if (!frameToEncode) {
+          gl.uniform1f(flipYLocation, 1.0);
+          gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+          frameToEncode = new VideoFrame(canvas, { timestamp: 0 });
+        }
+
+        try {
+          const sessionTimestamp = (now - session.recordingStartTime) * 1000;
+          const frame = new VideoFrame(frameToEncode, { timestamp: sessionTimestamp });
+          session.videoEncoder.encode(frame, { keyFrame: session.frameCount % fps === 0 });
+          frame.close();
+          session.frameCount++;
+          session.expectedNextFrameTime += frameInterval;
+
+          if (now > session.expectedNextFrameTime + frameInterval) {
+            session.expectedNextFrameTime = now;
+          }
+        } catch (e) {
+          console.error(`Failed to encode video frame for task ${session.taskId}`, e);
+        }
+      }
+    }
+
+    if (frameToEncode) {
+      frameToEncode.close();
+    }
+
+    if (activeRecordings.size > 0) {
+      const nextTime = Math.min(...Array.from(activeRecordings.values()).map((s) => s.expectedNextFrameTime));
+      const delay = Math.max(0, nextTime - performance.now());
+      setTimeout(loop, delay);
+    }
+  };
+
+  loop();
+}
+
+async function startRecording(taskId: string) {
+  if (!canvas) return;
+
+  const sessionMuxer = new WebCodecMuxer({
+    width: canvas.width,
+    height: canvas.height,
+    codec: "vp9",
+  });
+
+  const sessionVideoEncoder = new VideoEncoder({
+    output: (chunk, metadata) => {
+      sessionMuxer.addVideoChunk(chunk);
+    },
+    error: (e) => console.error(`VideoEncoder error for task ${taskId}:`, e),
+  });
+
+  const fps = 30;
+  sessionVideoEncoder.configure({
+    codec: "vp09.00.10.08",
+    width: canvas.width,
+    height: canvas.height,
+    bitrate: 1_000_000,
+    framerate: fps,
+    latencyMode: "realtime",
+  });
+
+  const now = performance.now();
+  const session: RecordingSession = {
+    taskId,
+    videoEncoder: sessionVideoEncoder,
+    muxer: sessionMuxer,
+    frameCount: 0,
+    recordingStartTime: now,
+    expectedNextFrameTime: now,
+  };
+
+  const isFirstSession = activeRecordings.size === 0;
+  activeRecordings.set(taskId, session);
+
+  if (isFirstSession) {
+    startRecordingLoop();
+  }
+}
+
+async function stopRecording(taskId: string, request?: any) {
+  const session = activeRecordings.get(taskId);
+  if (!session) return;
+
+  activeRecordings.delete(taskId);
+
+  await session.videoEncoder.flush();
+  session.videoEncoder.close();
+
+  const videoBlob = session.muxer.finalize();
+
+  if (request) {
+    await handleVideoUpload(videoBlob, request);
+  } else {
+    self.postMessage({ type: "video_recorded", payload: { videoBlob, taskId } });
+  }
+}
+
+async function handleVideoUpload(videoBlob: Blob, request: WorkerRequest) {
+  if (request.targetField) {
+    const formData = new FormData();
+    formData.append(request.targetField, videoBlob, "video.webm");
+
+    if (request.fields) {
+      for (const [key, value] of Object.entries(request.fields)) {
+        formData.append(key, value as string);
+      }
+    }
+
+    await upload(request, formData);
+  } else {
+    const dataUrl = await blobToBase64(videoBlob);
+    await upload(request, JSON.stringify({ data: dataUrl, id: request.correlation }));
+  }
+  self.postMessage({ type: "video_uploaded", taskId: request.taskId });
+}
+
 self.onmessage = (e: MessageEvent) => {
   const { type, payload } = e.data;
 
@@ -251,33 +393,8 @@ self.onmessage = (e: MessageEvent) => {
     requestQueue.push(payload);
     processQueue();
   } else if (type === "start_video") {
-    isVideoRecording = true;
-    const loop = () => {
-      if (!isVideoRecording) return;
-      if (gl && canvas) {
-        gl.uniform1f(flipYLocation, 1.0);
-        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-      }
-      requestAnimationFrame(loop);
-    };
-    requestAnimationFrame(loop);
+    startRecording(payload.taskId);
   } else if (type === "stop_video") {
-    isVideoRecording = false;
-  } else if (type === "upload_video") {
-    const { videoBlob, request } = payload;
-
-    const uploadTask = async () => {
-      if (request.targetField) {
-        const formData = new FormData();
-        formData.append(request.targetField, videoBlob, "video.webm");
-        await upload(request, formData);
-      } else {
-        const dataUrl = await blobToBase64(videoBlob);
-        await upload(request, JSON.stringify({ data: dataUrl, id: request.correlation }));
-      }
-      self.postMessage({ type: "video_uploaded", taskId: request.taskId });
-    };
-
-    uploadTask()
+    stopRecording(payload.taskId, payload.request);
   }
 };
