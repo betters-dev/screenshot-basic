@@ -73,54 +73,17 @@ class ScreenshotUI {
   async handleVideoRequest(request: ScreenshotRequest) {
     const taskId = `${this.nextTaskId++}`;
     const duration = request.duration || 5000;
-    const fps = 30;
-
-    const recordCanvas = document.createElement("canvas");
-    recordCanvas.width = this.canvas.width;
-    recordCanvas.height = this.canvas.height;
-    const ctx = recordCanvas.getContext("2d", { alpha: false })!;
-
-    const stream = recordCanvas.captureStream(fps);
-    const mediaRecorder = new MediaRecorder(stream, { mimeType: "video/webm;codecs=vp9" });
-    const chunks: Blob[] = [];
-
-    mediaRecorder.ondataavailable = (e) => {
-      if (e.data.size > 0) chunks.push(e.data);
-    };
-
-    mediaRecorder.start();
-
-    this.worker.postMessage({ type: "start_video", payload: { taskId } });
-
-    let isRecording = true;
-    const frameInterval = setInterval(() => {
-      if (isRecording) {
-        ctx.drawImage(this.canvas, 0, 0);
-      }
-    }, 1000 / fps);
-
-    await new Promise((resolve) => setTimeout(resolve, duration));
-
-    isRecording = false;
-    clearInterval(frameInterval);
-    this.worker.postMessage({ type: "stop_video" });
-    mediaRecorder.stop();
-
-    const videoBlob = await new Promise<Blob>((resolve) => {
-      mediaRecorder.onstop = () => {
-        resolve(new Blob(chunks, { type: "video/webm" }));
-      };
-    });
 
     await new Promise((resolve) => {
       this.pendingTasks.set(taskId, resolve);
-      this.worker.postMessage({
-        type: "upload_video",
-        payload: {
-          videoBlob,
-          request: { ...request, taskId },
-        },
-      });
+      this.worker.postMessage({ type: "start_video", payload: { taskId } });
+
+      setTimeout(() => {
+        this.worker.postMessage({
+          type: "stop_video",
+          payload: { taskId, request: { ...request, taskId } },
+        });
+      }, duration);
     });
   }
 }
