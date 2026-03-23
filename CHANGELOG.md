@@ -1,3 +1,16 @@
+# 1.1.1 - 22 Mar 2026
+
+- Move image compression and HTTP uploads from main thread to Web Worker.
+- Simplify main thread logic to focus on UI events and video capture orchestration.
+- Implement 'u_flipY' uniform in WebGL shader for flexible coordinate handling.
+- Refactor client-side Lua for improved request preparation and callback handling.
+- Update build script to minify worker code and remove debug statements.
+- Update documentation diagrams to reflect the new asynchronous worker flow.
+- Update MediaRecorder to use 'video/webm;codecs=vp9' as default.
+- additional fields for upload request.
+- Fix the black screen issue after window resizing.
+- Remove unused DOM elements
+
 # 1.1.0 - 21 Mar 2026
 
 - Implemented **video recording** functionality (`requestRecordVideoUpload`) using `MediaRecorder` and `ImageBitmap` frame transfers.
