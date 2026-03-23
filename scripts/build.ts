@@ -23,7 +23,7 @@
         return new Worker(URL.createObjectURL(__workerBlob));
     })()`.trim();
 
-  javaScriptCode = javaScriptCode.replace(/new Worker\(['"]webworker\.ts['"]\)/, workerBlobCode);
+  javaScriptCode = javaScriptCode.replace(/new Worker\(['"]webworker\.ts['"]\)/, () => workerBlobCode);
 
   const transformedResponse = new HTMLRewriter()
     .on("script[src]", {
