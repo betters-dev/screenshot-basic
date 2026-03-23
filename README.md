@@ -10,24 +10,25 @@ Unlike the original resource, this version completely removes heavy dependencies
 
 The screenshot capture process is heavily optimized to ensure minimal impact on game performance:
 
-| Metric               | Before   | After   | Improvement        |
-| :------------------- | :------- | :------ | :----------------- |
-| **CPU msec Idle**    | ~0.03 ms | 0.00 ms | **100% Reduction** |
-| **ui.html Size**     | ~530 KB  | < 10 KB | **> 98% Smaller**  |
-| **Main Thread Time** | ~240 ms  | ~1 ms   | **~99.5% Faster**  |
+| Metric               | Before   | After   | Reduce    |
+|:---------------------|:---------|:--------|:----------|
+| **CPU msec Idle**    | ~0.03 ms | 0.00 ms | **100%**  |
+| **ui.html Size**     | ~530 KB  | < 10 KB | **98%**   |
+| **Main Thread Time** | ~240 ms  | ~1 ms   | **99.5%** |
 
-### ✨ Key Architectural Improvements
+### ✨ Key Features
 
 **🎨 Rendering & Pipeline**
 
 - **On-Demand Rendering:** The WebGL context now only executes draw calls when a screenshot is actively requested. This completely eliminates idle GPU/CPU overhead, returning precious frame budget back to the game.
 - **Robust Request Queuing:** Rapid, concurrent screenshot requests are now safely queued and processed sequentially (one per frame). This guarantees zero data loss and prevents race conditions during burst captures.
+- **Video Recording:** High-performance video capture support (WebM/VP9) at 30 FPS, allowing for short gameplay clips to be recorded and uploaded directly to remote endpoints.
 
 **⚡ Threading & Memory Optimization**
 
 - **Off-Main-Thread Processing:** All heavy image operations—including WebGL rendering, compression, encoding, and Base64 conversion—are now entirely offloaded to a dedicated Web Worker. This ensures the main UI thread remains buttery smooth during captures.
-- **Zero-Copy Transfers:** Raw pixel data is passed between the Worker and main thread using `Transferable` objects. This avoids expensive memory cloning, ensuring instantaneous data handoffs even for massive 4K buffers.
-- **Canvas & Buffer Pooling:** The worker maintains a persistent, reusable `OffscreenCanvas` and recycles `ArrayBuffer` instances. By only resizing or allocating when absolutely necessary, we drastically reduce Garbage Collection (GC) spikes and memory fragmentation during rapid-fire captures.
+- **Zero-Copy Canvas:** The UI's rendering control is transferred directly to the Web Worker via `OffscreenCanvas`. This allows the worker to capture and process frames directly from the GPU, completely bypassing the main thread's memory space.
+- **Buffer Recycling:** The worker utilizes a persistent `ArrayBuffer` pool for `readPixels` operations. By recycling these buffers instead of reallocating them, we ensure instantaneous data handling even for massive 4K captures without triggering Garbage Collection (GC) spikes.
 
 ## Installation
 
@@ -36,7 +37,7 @@ The screenshot capture process is heavily optimized to ensure minimal impact on 
 3. Extract the contents into your server's `resources` folder.
 4. Add `ensure screenshot-basic` to your `server.cfg`.
 
-## Building the UI
+## Building the ui.html
 
 The UI is built using [Bun](https://bun.sh/). If you modify the files in the `ui/` directory, you need to rebuild the `ui.html` file:
 
@@ -64,7 +65,7 @@ sequenceDiagram
     Worker->>Worker: Render Screen to RT
     Worker->>Worker: Read Pixels
     Worker->>Worker: Image Compression
-    Worker->>Worker: FileReaderSync (Base64)
+    Worker->>Worker: FileReader (Base64)
     Worker-->>NUI: postMessage({ dataURI })
     NUI->>Lua: Trigger NUI Callback
     Lua->>Lua: Execute cb(dataURI)
@@ -72,11 +73,13 @@ sequenceDiagram
 
 Arguments:
 
-- **options**: An optional object containing options.
-  - **encoding**: 'png' | 'jpg' | 'webp' - The target image encoding. Defaults to 'jpg'.
-  - **quality**: number - The quality for a lossy image encoder, in a range for 0.0-1.0. Defaults to 0.92.
-- **cb**: A callback upon result.
-  - **result**: A `base64` data URI for the image.
+| Argument           | Type       | Required | Default | Description                                                |
+|:-------------------|:-----------|:---------|:--------|:-----------------------------------------------------------|
+| **options**        | `object`   | -        | `{}`    | An object containing options.                              |
+| `options.encoding` | `string`   | -        | `'jpg'` | The target image encoding (`'png'`, `'jpg'`, or `'webp'`). |
+| `options.quality`  | `number`   | -        | `0.92`  | The quality for lossy encoders (0.0 to 1.0).               |
+| `options.headers`  | `object`   | -        | `{}`    | HTTP headers to send to the internal callback.             |
+| **cb**             | `function` | Yes      | -       | A callback invoked with the `base64` data URI.             |
 
 Example:
 
@@ -111,13 +114,16 @@ sequenceDiagram
 
 Arguments:
 
-- **url**: The URL to a file upload handler.
-- **field**: The name for the form field to add the file to.
-- **options**: An optional object containing options.
-  - **encoding**: 'png' | 'jpg' | 'webp' - The target image encoding. Defaults to 'jpg'.
-  - **quality**: number - The quality for a lossy image encoder, in a range for 0.0-1.0. Defaults to 0.92.
-- **cb**: A callback upon result.
-  - **result**: The response data for the remote URL.
+| Argument           | Type       | Required | Default | Description                                                          |
+|:-------------------|:-----------|:---------|:--------|:---------------------------------------------------------------------|
+| **url**            | `string`   | Yes      | -       | The URL to a file upload handler.                                    |
+| **field**          | `string`   | Yes      | -       | The name for the form field to add the file to.                      |
+| **options**        | `object`   | -        | `{}`    | An object containing options.                                        |
+| `options.encoding` | `string`   | -        | `'jpg'` | The target image encoding (`'png'`, `'jpg'`, or `'webp'`).           |
+| `options.quality`  | `number`   | -        | `0.92`  | The quality for lossy encoders (0.0 to 1.0).                         |
+| `options.headers`  | `object`   | -        | `{}`    | HTTP headers to include in the upload request.                       |
+| `options.fields`   | `object`   | -        | `{}`    | Additional form fields to include in the `multipart/form-data` body. |
+| **cb**             | `function` | Yes      | -       | A callback invoked with the remote server response.                  |
 
 Example:
 
@@ -158,12 +164,15 @@ sequenceDiagram
 
 Arguments:
 
-- **url**: The URL to a file upload handler.
-- **field**: The name for the form field to add the file to.
-- **options**: An optional object containing options.
-  - **duration**: number - The duration of the recording in milliseconds. Defaults to 5000.
-- **cb**: A callback upon result.
-  - **result**: The response data for the remote URL.
+| Argument           | Type       | Required | Default | Description                                                          |
+|:-------------------|:-----------|:---------|:--------|:---------------------------------------------------------------------|
+| **url**            | `string`   | Yes      | -       | The URL to a file upload handler.                                    |
+| **field**          | `string`   | Yes      | -       | The name for the form field to add the file to.                      |
+| **options**        | `object`   | -        | `{}`    | An object containing options.                                        |
+| `options.duration` | `number`   | -        | `5000`  | The duration of the recording in milliseconds.                       |
+| `options.headers`  | `object`   | -        | `{}`    | HTTP headers to include in the upload request.                       |
+| `options.fields`   | `object`   | -        | `{}`    | Additional form fields to include in the `multipart/form-data` body. |
+| **cb**             | `function` | Yes      | -       | A callback invoked with the remote server response.                  |
 
 Example:
 
