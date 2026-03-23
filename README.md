@@ -102,9 +102,9 @@ sequenceDiagram
     Worker->>Worker: Render Screen to RT
     Worker->>Worker: Read Pixels
     Worker->>Worker: Image Compression
-    Worker-->>NUI: postMessage({ blob })
-    NUI->>Server: fetch(POST multipart/form-data)
-    Server-->>NUI: HTTP 200 (Response)
+    Worker->>Server: fetch(POST multipart/form-data)
+    Server-->>Worker: HTTP 200 (Response)
+    Worker-->>NUI: postMessage({ taskId })
     NUI->>Lua: Trigger NUI Callback
     Lua->>Lua: Execute cb(responseText)
 ```
@@ -148,8 +148,10 @@ sequenceDiagram
     end
     NUI->>Worker: postMessage({ type: stop_video })
     NUI->>NUI: mediaRecorder.stop()
-    NUI->>Server: fetch(POST multipart/form-data video.webm)
-    Server-->>NUI: HTTP 200 (Response)
+    NUI->>Worker: postMessage({ type: upload_video, payload: { videoBlob, request } })
+    Worker->>Server: fetch(POST multipart/form-data video.webm)
+    Server-->>Worker: HTTP 200 (Response)
+    Worker-->>NUI: postMessage({ type: video_uploaded })
     NUI->>Lua: Trigger NUI Callback
     Lua->>Lua: Execute cb(responseText)
 ```
