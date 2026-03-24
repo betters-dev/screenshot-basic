@@ -31,7 +31,7 @@ do
     end
 
     exports('requestScreenshot', function(options, cb)
-        local req = prepareRequest(options, cb)
+        local req = type(options) == 'table' and options['__cfx_functionReference'] and prepareRequest({}, options) or prepareRequest(options, cb)
 
         req.resultURL = nil
         req.targetField = nil
@@ -41,7 +41,7 @@ do
     end)
 
     exports('requestScreenshotUpload', function(url, field, options, cb)
-        local req = prepareRequest(options, cb)
+        local req = type(options) == 'table' and options['__cfx_functionReference'] and prepareRequest({}, options) or prepareRequest(options, cb)
 
         req.targetURL = url
         req.targetField = field
@@ -51,7 +51,7 @@ do
     end)
 
     exports('requestRecordVideoUpload', function(url, field, options, cb)
-        local req = prepareRequest(options, cb)
+        local req = type(options) == 'table' and options['__cfx_functionReference'] and prepareRequest({}, options) or prepareRequest(options, cb)
 
         req.targetURL = url
         req.targetField = field

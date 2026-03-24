@@ -1,3 +1,7 @@
+# 1.2.1 - 24 Mar 2026
+
+- Improve FiveM export compatibility by correctly handling cases where `options` is omitted and the callback is passed in its place.
+
 # 1.2.0 - 23 Mar 2026
 
 - Re-implement **video recording** using `WebCodecs` (`VideoEncoder`) and a custom lightweight WebM muxer (`MiniWebMMuxer`) to fully offload video processing from the main thread.
